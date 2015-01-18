@@ -1,0 +1,121 @@
+---
+title: "Peer Assessment 1"
+author: "Phil Silberman"
+date: "January 17, 2015"
+output: html_document
+---
+
+Part 0 - Loading the Data
+--------
+First, we need to load the data into R, so we use **read.csv** to do so and name the data **df**.
+```{r readdata,echo = TRUE}
+df <- read.csv("activity.csv")
+```
+
+Part 1 - Mean Total No. of Steps per Day
+-------
+
+Now, we want to plot a histogram of the total number of steps taken each day. We will use the base graphics package to accomplish this. Additionally, we will need to compute the mean and median number of steps taken per day. We can do this using the same code.
+
+```{r hist1, echo = TRUE}
+library(graphics)
+datelist <- levels(df$date)
+v <- numeric()
+for (i in 1:length(datelist)){
+        v <- c(v,sum(df[which(df$date == datelist[i]), 1], na.rm = TRUE))
+}
+hist(v, breaks = 10, col = "lightblue", 
+     main = "Frequency of Total Daily Steps", xlab = "Total Steps in One Day")
+summary(v)
+```
+From our summary, we determine that **the mean number of steps taken per day is 9354 and the median number of steps is 10400**.
+
+Part 2 - Avg Daily Activity Pattern
+-------
+
+Now we need to construct a time series plot of the 5-minute intervals averaged over number of steps taken, averaged across all days. Using a for-loop, as before, we create a data frame with those averages paired with the associated interval. Then we simply take the maximum in R to note that **the interval at 835 minutes contains the maximum number of steps on average across all days**.
+
+```{r timeseries1, echo = TRUE}
+w <- numeric()
+for (i in 1:288) {
+        w <- c(w,mean(df[which(df$interval == df[i,3]),1], na.rm = TRUE))
+}
+
+timesrs <- cbind(data.frame(w), df[1:288,3])
+names(timesrs) <- c("avg_steps", "interval")
+
+plot(timesrs$avg_steps ~ timesrs$interval, type = "l", 
+     xlab = "Interval", ylab = "Average Steps", 
+     main = "Time Series of Average Steps by Daily Interval")
+
+timesrs[which(timesrs$avg_steps == max(timesrs$avg_steps)),]
+```
+
+Part 3 - Imputing Missing Values
+-------
+We can quickly determine how many rows have missing values using **is.na**.
+```{r numnas, echo=TRUE}
+nrow(df[which(is.na(df$steps)),])
+```
+Now we need to replace those **2304** missing values with something. I think it makes sense to replace these values with the average for that interval. While this (possibly unfairly) assumes that each day involves similar activity, it fits the idea that this anonymous individual operates on a seemingly repeatable schedule.
+```{r removenas, echo = TRUE}
+filleddf <- df
+for (i in 1:nrow(df)) {
+        if(is.na(df[i,1])) {
+                filleddf[i,1] <- timesrs[which(timesrs$interval == df[i,3]),1]
+        }
+}
+nrow(filleddf[which(is.na(filleddf$steps)),])
+```
+Our new data frame, **filleddf**, has no **NA** values in **step**. Now, to create a histogram of the total number of steps taken each day and to find the mean and median, we simply revisit our code from part 1 and replace **df** with **filleddf**.
+```{r hist2, echo=TRUE}
+v1 <- numeric()
+for (i in 1:length(datelist)){
+        v1 <- c(v1,sum(filleddf[which(df$date == datelist[i]), 1]))
+}
+hist(v1, breaks = 10, col = "lightblue", 
+     main = "Frequency of Total Daily Steps", xlab = "Total Steps in One Day")
+summary(v1)
+```
+**Note that the median and mean have both increased to be 10770, differing from earlier by 370 steps and 1416 steps respectively.** Additionally, it appears the average steps per day is much more centralized. This makes sense, given the way we replaced our missing values. That is, most days tend to have the same number of daily steps now since we assumed that most days would be similar in activity.
+
+Part 4 - Weekends vs. Weekdays
+------------
+We add a column full of **NA** values to **filleddf** and call the column name week. Then, using **weekdays()**, we iterate over **filleddf** and replace the **NA** with "weekend" if the given day is on the weekend, and "weekday" if the day is a weekday.
+```{r addweekday, echo=TRUE, cache = TRUE}
+newcol <- rep(NA, nrow(filleddf))
+filleddf <- cbind(filleddf, newcol)
+names(filleddf) <- c("steps", "date", "interval", "week")
+for (i in 1:nrow(filleddf)) {
+        if((weekdays(as.Date(filleddf[i,2])) == "Saturday") |
+                   (weekdays(as.Date(filleddf[i,2])) == "Sunday")) {
+                filleddf[i,4] <- "weekend"
+        } else {
+                filleddf[i,4] <- "weekday"
+        }
+}
+
+```
+
+Now, we want a panel plot with a time series plot of the 5 minute intervals and the average number of steps taken, averaged across all weekday days or weekend days. We can use our code from part 2 for this. For this plot, we will use the **lattice** library.
+```{r timeseries2, echo=TRUE}
+library(lattice)
+w1 <- numeric()
+w2 <- numeric()
+weekdays <- filleddf[which(filleddf$week == "weekday"),]
+weekends <- filleddf[which(filleddf$week == "weekend"),]
+for (i in 1:288) {
+        w1 <- c(w1,mean(weekdays[which(weekdays$interval == weekdays[i,3]),1]))
+        w2 <- c(w2, mean(weekends[which(weekends$interval == weekends[i,3]),1]))
+}
+
+timesrs2 <- cbind(data.frame(c(w1,w2)), rep(filleddf[1:288,3],2), 
+                 c(rep("weekday", 288), rep("weekend", 288)))
+names(timesrs2) <- c("avg_steps", "interval", "week")
+
+xyplot(avg_steps~interval|week, data = timesrs2, type = "l", 
+       ylab = "Number of steps", xlab = "Interval", 
+       main = "Time series of steps taken", layout = c(1,2))
+```
+
+The key difference here is that weekdays tend to have a more concentrated burst of movement in the morning and then tail off for the rest of the day. Weekends have a higher number of steps on average throughout the day, indicating more general activity.
